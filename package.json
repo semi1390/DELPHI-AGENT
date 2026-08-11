@@ -1,0 +1,33 @@
+{
+  "name": "delphi-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Autonomous trading agent for the Gensyn Delphi Agent Arena (competition-testnet). Read-only signal/edge/sizing pipeline with a 24/7 DRY-RUN observation worker. No live execution enabled.",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "scan": "tsx scripts/marketScan.ts",
+    "signal": "tsx scripts/signalScan.ts",
+    "quant": "tsx scripts/quantProbe.ts",
+    "baserate": "tsx scripts/baserateProbe.ts",
+    "plan": "tsx scripts/tradePlan.ts",
+    "wallet": "tsx scripts/checkWallet.ts",
+    "worker": "tsx src/worker.ts",
+    "dev": "tsx watch src/worker.ts",
+    "build": "tsc",
+    "start": "node dist/src/worker.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@gensyn-ai/gensyn-delphi-sdk": "^2.1.0",
+    "dotenv": "^16.4.0",
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0"
+  }
+}

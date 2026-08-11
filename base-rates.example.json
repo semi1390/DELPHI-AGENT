@@ -1,0 +1,11 @@
+{
+  "trump_truthsocial": {
+    "match": { "all": ["trump"], "any": ["truth social", "truthsocial"] },
+    "source": "trumpstruth",
+    "note": "Rate auto-fetched from trumpstruth.org (trailing daily counts -> mean + over-dispersion). No hand-research."
+  },
+  "musk_x": {
+    "match": { "all": ["musk"], "any": ["on x", "twitter", "posts on x", "times on x"] },
+    "note": "NO free verified source for X post counts -> this entity ABSTAINS (baseline, zero edge). Add a source only if you wire a real fetcher; never put a guessed rate_per_day here."
+  }
+}

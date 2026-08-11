@@ -1,0 +1,26 @@
+# Secrets — the private key controls your leaderboard identity. NEVER commit this.
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Logs
+*.log
+npm-debug.log*
+logs/
+
+# Local strategy config (your own probability overrides)
+manual-overrides.json
+
+# Local base-rate research config
+base-rates.json
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/

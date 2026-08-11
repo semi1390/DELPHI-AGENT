@@ -1,0 +1,9 @@
+{
+  "0x909629ec1e8167e48c2fa58a550513e32d4789b0": {
+    "note": "Jason Day Wyndham — example only; market id is the on-chain address",
+    "outcomes": {
+      "0": 0.08,
+      "1": 0.92
+    }
+  }
+}
