@@ -44,6 +44,8 @@ async function main(): Promise<void> {
         slippageTolerance: config.slippageTolerance,
         tokenDecimals: result.tokenDecimals,
         redeemEnabled: config.redeemEnabled,
+        takeProfitEnabled: config.takeProfitEnabled,
+        takeProfitPct: config.takeProfitPct,
       },
     });
     logger.warn("live: execution report", {

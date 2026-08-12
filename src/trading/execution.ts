@@ -24,6 +24,7 @@
 import { formatUnits } from "viem";
 import type { DelphiClient, Market, Position } from "@gensyn-ai/gensyn-delphi-sdk";
 import type { ResilientReader } from "../resilientClient.js";
+import { withRetry } from "../retry.js";
 import type { Plan, IntendedOrder } from "./planner.js";
 import { logger } from "../logger.js";
 
@@ -34,6 +35,8 @@ export interface LiveExecConfig {
   slippageTolerance: number;
   tokenDecimals: number;
   redeemEnabled: boolean;
+  takeProfitEnabled: boolean;
+  takeProfitPct: number;
 }
 
 export interface Fill {
@@ -52,6 +55,8 @@ export interface ExecReport {
   currentLiveExposureBefore: number;
   redeemedMarkets: number;
   redeemedTokens: number;
+  soldPositions: number;
+  sellProceeds: number;
   stuckNeedingLiquidation: number;
   fills: Fill[];
   skips: { marketId: string; outcomeName: string; reason: string }[];
@@ -77,7 +82,8 @@ export async function executeLivePlan(args: {
   const { address: wallet } = await reader.getSigner();
   const report: ExecReport = {
     wallet, balanceBefore: 0, currentLiveExposureBefore: 0,
-    redeemedMarkets: 0, redeemedTokens: 0, stuckNeedingLiquidation: 0,
+    redeemedMarkets: 0, redeemedTokens: 0, soldPositions: 0, sellProceeds: 0,
+    stuckNeedingLiquidation: 0,
     fills: [], skips: [], errors: [], spent: 0,
   };
 
@@ -91,6 +97,14 @@ export async function executeLivePlan(args: {
     report.redeemedTokens = redeemedTokens;
     report.stuckNeedingLiquidation = stuck;
     if (redeemedMarkets > 0) positions = await listAllPositions(reader, wallet); // refresh after redemption
+  }
+
+  // 2b) Take-profit: sell OPEN positions whose value is ≥ takeProfitPct over cost.
+  if (config.takeProfitEnabled) {
+    const sells = await takeProfitSells(client, reader, positions, markets, config);
+    report.soldPositions = sells.sold;
+    report.sellProceeds = sells.proceeds;
+    if (sells.sold > 0) positions = await listAllPositions(reader, wallet); // refresh after sells
   }
 
   // 3) Balance + current live exposure (mark-to-market on open positions).
@@ -240,6 +254,137 @@ function markToMarket(positions: Position[], markets: Market[]): number {
     if (Number.isFinite(shares) && shares > 0) total += shares * price;
   }
   return total;
+}
+
+// ── Take-profit sells ───────────────────────────────────────────────────────
+
+/**
+ * Sell OPEN positions whose current sellable value is ≥ takeProfitPct over what
+ * was paid (cost basis from the subgraph). Sells the full position with
+ * minTokensOut slippage protection. Idempotent: sellShares waits for the receipt;
+ * on error we re-read shares and only count a sale if shares actually decreased —
+ * never resell. Losers are left to ride to settlement (no stop-loss).
+ */
+async function takeProfitSells(
+  client: DelphiClient,
+  reader: ResilientReader,
+  positions: Position[],
+  markets: Market[],
+  config: LiveExecConfig,
+): Promise<{ sold: number; proceeds: number }> {
+  const byId = new Map(markets.map((m) => [m.id.toLowerCase(), m]));
+  const subgraph = client.getSubgraph();
+  const wallet = (await reader.getSigner()).address.toLowerCase();
+
+  let sold = 0;
+  let proceeds = 0;
+
+  for (const p of positions) {
+    if (p.redeemedOrLiquidated) continue;
+    if (p.marketStatus !== "open") continue; // settled → redeem path; not sold here
+    let shares: bigint;
+    try { shares = BigInt(p.shares); } catch { continue; }
+    if (shares <= 0n) continue;
+
+    const market = p.marketProxy as `0x${string}`;
+    const outcomeIdx = Number(p.outcomeIdx);
+
+    // Cost basis from on-chain trades (restart-safe).
+    const cb = await costBasis(subgraph, wallet, market, outcomeIdx);
+    if (!cb || cb.netShares <= 0n || cb.netCostTokens <= 0n) continue;
+
+    // Current value if we sold everything now.
+    let tokensOut: bigint;
+    try {
+      const q = await reader.quoteSell({ marketAddress: market, outcomeIdx, sharesIn: shares });
+      tokensOut = q.tokensOut;
+    } catch {
+      continue; // unquotable (thin) → skip
+    }
+    if (tokensOut <= 0n) continue;
+
+    const cost = Number(formatUnits(cb.netCostTokens, config.tokenDecimals));
+    const value = Number(formatUnits(tokensOut, config.tokenDecimals));
+    const profitPct = (value - cost) / cost;
+
+    if (profitPct < config.takeProfitPct) continue; // hold — not enough gain
+    if (value < config.minOrderTst) continue; // dust — not worth gas
+
+    const minTokensOut = withDownwardTolerance(tokensOut, config.slippageTolerance);
+    const preShares = shares;
+    try {
+      const { transactionHash } = await client.sellShares({ marketAddress: market, outcomeIdx, sharesIn: shares, minTokensOut });
+      sold++;
+      proceeds += value;
+      logger.info("live: TOOK PROFIT (sold)", {
+        market, outcomeIdx, cost: round(cost), value: round(value), profitPct: round(profitPct, 3), txHash: transactionHash,
+      });
+    } catch (err) {
+      // IDEMPOTENCY: re-read; only count if shares actually fell. Never resell.
+      const message = err instanceof Error ? err.message : String(err);
+      try {
+        const postShares = await sharesHeldFor(reader, wallet, market, outcomeIdx);
+        if (postShares < preShares) {
+          sold++;
+          proceeds += value;
+          logger.info("live: sell LANDED despite error — counted, not reselling", { market, outcomeIdx, message });
+        } else {
+          logger.error("live: sell error (not reselling)", { market, outcomeIdx, message, reconciled: "no share change — safe" });
+        }
+      } catch (reErr) {
+        logger.error("live: sell error + reconcile failed (NOT reselling)", { market, outcomeIdx, message, reErr: reErr instanceof Error ? reErr.message : String(reErr) });
+      }
+    }
+  }
+
+  return { sold, proceeds };
+}
+
+/** Net cost basis for (market, outcomeIdx) from the wallet's subgraph trades. */
+async function costBasis(
+  subgraph: ReturnType<DelphiClient["getSubgraph"]>,
+  wallet: string,
+  market: string,
+  outcomeIdx: number,
+): Promise<{ netShares: bigint; netCostTokens: bigint } | null> {
+  try {
+    let buysTokens = 0n, buysShares = 0n, sellsTokens = 0n, sellsShares = 0n;
+    const pageSize = 100;
+    for (let page = 0; page < 5; page++) {
+      const { buys, sells } = await withRetry(
+        () => subgraph.getMarketTrades(market, { first: pageSize, skip: page * pageSize }),
+        { label: "getMarketTrades" },
+      );
+      for (const b of buys) {
+        if ((b.buyer ?? "").toLowerCase() !== wallet) continue;
+        if (Number(b.outcomeIdx) !== outcomeIdx) continue;
+        buysTokens += safeBig(b.tokensIn);
+        buysShares += safeBig(b.sharesOut);
+      }
+      for (const s of sells) {
+        if ((s.seller ?? "").toLowerCase() !== wallet) continue;
+        if (Number(s.outcomeIdx) !== outcomeIdx) continue;
+        sellsTokens += safeBig(s.tokensOut);
+        sellsShares += safeBig(s.sharesIn);
+      }
+      if (buys.length < pageSize && sells.length < pageSize) break;
+    }
+    const netShares = buysShares - sellsShares;
+    const netCostTokens = buysTokens - sellsTokens;
+    return { netShares, netCostTokens };
+  } catch {
+    return null;
+  }
+}
+
+function safeBig(s: string | null): bigint {
+  if (!s) return 0n;
+  try { return BigInt(s); } catch { return 0n; }
+}
+
+function withDownwardTolerance(tokensOut: bigint, tol: number): bigint {
+  const bps = BigInt(10_000 - Math.round(tol * 10_000));
+  return (tokensOut * bps) / 10_000n;
 }
 
 // ── Redemption ────────────────────────────────────────────────────────────────

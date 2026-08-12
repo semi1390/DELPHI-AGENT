@@ -57,6 +57,8 @@ async function runOnce(): Promise<void> {
           slippageTolerance: config.slippageTolerance,
           tokenDecimals: result.tokenDecimals,
           redeemEnabled: config.redeemEnabled,
+          takeProfitEnabled: config.takeProfitEnabled,
+          takeProfitPct: config.takeProfitPct,
         },
       });
       logger.info("live: execution report", {
@@ -66,6 +68,8 @@ async function runOnce(): Promise<void> {
         liveExposureBefore: exec.currentLiveExposureBefore,
         redeemedMarkets: exec.redeemedMarkets,
         redeemedTokens: exec.redeemedTokens,
+        soldPositions: exec.soldPositions,
+        sellProceeds: Number(exec.sellProceeds.toFixed(2)),
         filled: exec.fills.length,
         spent: Number(exec.spent.toFixed(2)),
         skips: exec.skips.length,

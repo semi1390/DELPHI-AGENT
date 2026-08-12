@@ -97,6 +97,10 @@ export interface AppConfig {
   meanrevPull: number;
   /** Mean-reversion: hard cap on the probability shift. */
   meanrevMaxNudge: number;
+  /** LIVE: take profit by selling positions up ≥ this fraction over cost. */
+  takeProfitEnabled: boolean;
+  /** LIVE: profit threshold (fraction) that triggers a take-profit sell. */
+  takeProfitPct: number;
 }
 
 function parseNetwork(raw: string | undefined): Network {
@@ -180,6 +184,8 @@ export function loadConfig(): AppConfig {
     meanrevMinSkew: parseFloatEnv(process.env.MEANREV_MIN_SKEW, 0.1),
     meanrevPull: parseFloatEnv(process.env.MEANREV_PULL, 0.2),
     meanrevMaxNudge: parseFloatEnv(process.env.MEANREV_MAX_NUDGE, 0.06),
+    takeProfitEnabled: process.env.TAKE_PROFIT_ENABLED?.trim().toLowerCase() !== "false",
+    takeProfitPct: parseFloatEnv(process.env.TAKE_PROFIT_PCT, 0.4),
   };
 }
 
