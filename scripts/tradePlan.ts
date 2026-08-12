@@ -13,8 +13,7 @@ import { createDelphiClient } from "../src/delphi.js";
 import { assertApiKey, assertPrivateKey } from "../src/config.js";
 import { runPlanCycle } from "../src/pipeline.js";
 import { renderPlan, persistCycle } from "../src/planLog.js";
-import { executeOrder } from "../src/trading/execute.js";
-import type { IntendedOrder } from "../src/trading/planner.js";
+import { executeLivePlan } from "../src/trading/execution.js";
 import { logger } from "../src/logger.js";
 
 async function main(): Promise<void> {
@@ -36,28 +35,28 @@ async function main(): Promise<void> {
   if (dryRun) {
     logger.info("DRY-RUN: no orders placed. Set DRY_RUN=false to enable the live path.");
   } else {
-    // GATED LIVE PATH — only reached when DRY_RUN=false (not the default).
-    logger.warn("Placing live orders…", { count: result.plan.orders.length });
-    let placed = 0;
-    for (const o of result.plan.orders as IntendedOrder[]) {
-      try {
-        await executeOrder(client, o, { dryRun: false });
-        placed++;
-      } catch (err) {
-        logger.error("Order failed", { market: o.marketId, message: err instanceof Error ? err.message : String(err) });
-      }
-    }
-    logger.warn("Live run complete", { placed });
+    const exec = await executeLivePlan({
+      client, reader, plan: result.plan, markets: result.markets, dryRun: false,
+      config: {
+        maxTotalExposure: config.maxTotalExposure,
+        maxLiveExposure: config.maxLiveExposure,
+        minOrderTst: config.minOrderTst,
+        slippageTolerance: config.slippageTolerance,
+        tokenDecimals: result.tokenDecimals,
+        redeemEnabled: config.redeemEnabled,
+      },
+    });
+    logger.warn("live: execution report", {
+      filled: exec.fills.length, spent: Number(exec.spent.toFixed(2)),
+      redeemedTokens: exec.redeemedTokens, skips: exec.skips.length, errors: exec.errors.length,
+    });
+    for (const f of exec.fills) logger.info("live: fill", f);
   }
 
   logger.info("heartbeat: trade-plan complete", {
-    runId,
-    dryRun,
-    openMarkets: result.openMarkets,
-    failedMarkets: result.failedMarkets,
-    intendedOrders: result.plan.orders.length,
-    skips: result.plan.skips.length,
-    totalExposure: Number(result.plan.portfolio.totalExposure.toFixed(2)),
+    runId, dryRun,
+    openMarkets: result.openMarkets, failedMarkets: result.failedMarkets,
+    intendedOrders: result.plan.orders.length, skips: result.plan.skips.length,
   });
 }
 

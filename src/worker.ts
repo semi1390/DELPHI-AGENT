@@ -15,6 +15,7 @@ import { createDelphiClient } from "./delphi.js";
 import { assertApiKey, assertPrivateKey, loadConfig } from "./config.js";
 import { runPlanCycle } from "./pipeline.js";
 import { renderPlan, persistCycle } from "./planLog.js";
+import { executeLivePlan } from "./trading/execution.js";
 import { logger, section } from "./logger.js";
 
 let timer: NodeJS.Timeout | undefined;
@@ -33,7 +34,7 @@ async function runOnce(): Promise<void> {
   const cycleStart = Date.now();
   const uptimeMin = Math.round((Date.now() - bootedAt) / 60_000);
 
-  const { reader, config } = createDelphiClient();
+  const { client, reader, config } = createDelphiClient();
   logger.info("heartbeat: cycle start", { runId, cycle: cycles, uptimeMin, dryRun: config.dryRun });
 
   try {
@@ -41,9 +42,42 @@ async function runOnce(): Promise<void> {
     renderPlan(result.plan, config.maxTotalExposure, config.dryRun);
     await persistCycle(config.planLogFile, runId, result.at, result.plan, config.dryRun);
 
+    if (!config.dryRun) {
+      // ── LIVE EXECUTION (DRY_RUN=false) ──────────────────────────────────────
+      const exec = await executeLivePlan({
+        client,
+        reader,
+        plan: result.plan,
+        markets: result.markets,
+        dryRun: false,
+        config: {
+          maxTotalExposure: config.maxTotalExposure,
+          maxLiveExposure: config.maxLiveExposure,
+          minOrderTst: config.minOrderTst,
+          slippageTolerance: config.slippageTolerance,
+          tokenDecimals: result.tokenDecimals,
+          redeemEnabled: config.redeemEnabled,
+        },
+      });
+      logger.info("live: execution report", {
+        runId,
+        wallet: exec.wallet,
+        balanceBefore: exec.balanceBefore,
+        liveExposureBefore: exec.currentLiveExposureBefore,
+        redeemedMarkets: exec.redeemedMarkets,
+        redeemedTokens: exec.redeemedTokens,
+        filled: exec.fills.length,
+        spent: Number(exec.spent.toFixed(2)),
+        skips: exec.skips.length,
+        errors: exec.errors.length,
+        stuckNeedingLiquidation: exec.stuckNeedingLiquidation,
+      });
+    }
+
     logger.info("heartbeat: cycle complete", {
       runId,
       cycle: cycles,
+      mode: config.dryRun ? "DRY-RUN" : "LIVE",
       openMarkets: result.openMarkets,
       failedMarkets: result.failedMarkets,
       intendedOrders: result.plan.orders.length,

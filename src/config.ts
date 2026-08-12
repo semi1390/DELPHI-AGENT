@@ -87,6 +87,16 @@ export interface AppConfig {
   planIntervalMinutes: number;
   /** Worker: optional JSONL file to append intended orders to (for later review). */
   planLogFile?: string;
+  /** LIVE: hard ceiling (TST) on total capital deployed across all live positions. */
+  maxLiveExposure: number;
+  /** LIVE: redeem settled winning positions each cycle to free capital. */
+  redeemEnabled: boolean;
+  /** Mean-reversion: only fire when |price − 0.5| ≥ this (skip true coin-flips). */
+  meanrevMinSkew: number;
+  /** Mean-reversion: fraction of the distance to 0.5 to nudge back. */
+  meanrevPull: number;
+  /** Mean-reversion: hard cap on the probability shift. */
+  meanrevMaxNudge: number;
 }
 
 function parseNetwork(raw: string | undefined): Network {
@@ -165,6 +175,11 @@ export function loadConfig(): AppConfig {
     baseRateRepostPattern: process.env.BASERATE_REPOST_PATTERN?.trim() || "re-?truth(ed)?|repost(ed)?|reposting|shared a",
     planIntervalMinutes: parseIntEnv(process.env.PLAN_INTERVAL_MINUTES, 20),
     planLogFile: process.env.PLAN_LOG_FILE?.trim() || undefined,
+    maxLiveExposure: parseFloatEnv(process.env.MAX_LIVE_EXPOSURE, 100),
+    redeemEnabled: process.env.REDEEM_ENABLED?.trim().toLowerCase() !== "false",
+    meanrevMinSkew: parseFloatEnv(process.env.MEANREV_MIN_SKEW, 0.1),
+    meanrevPull: parseFloatEnv(process.env.MEANREV_PULL, 0.2),
+    meanrevMaxNudge: parseFloatEnv(process.env.MEANREV_MAX_NUDGE, 0.06),
   };
 }
 

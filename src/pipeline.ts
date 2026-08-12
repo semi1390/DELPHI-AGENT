@@ -8,7 +8,7 @@
  * can never drift. It computes and returns; it never places orders.
  */
 
-import type { DelphiClient } from "@gensyn-ai/gensyn-delphi-sdk";
+import type { DelphiClient, Market } from "@gensyn-ai/gensyn-delphi-sdk";
 import type { ResilientReader } from "./resilientClient.js";
 import type { AppConfig } from "./config.js";
 import { buildMarketSignals, type Signal } from "./signal.js";
@@ -19,6 +19,7 @@ export interface CycleResult {
   runId: string;
   at: string;
   plan: Plan;
+  markets: Market[];
   openMarkets: number;
   failedMarkets: number;
   tokenDecimals: number;
@@ -71,7 +72,7 @@ export async function runPlanCycle(
     tokenDecimals,
   });
 
-  return { runId, at, plan, openMarkets: open.length, failedMarkets, tokenDecimals };
+  return { runId, at, plan, markets: open, openMarkets: open.length, failedMarkets, tokenDecimals };
 }
 
 /** Placeholder so the type is imported where the gated live path lives. */

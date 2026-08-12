@@ -42,6 +42,8 @@ export function wrapClient(client: DelphiClient, opts: Partial<RetryOptions> = {
       opts,
     ),
     quoteBuy: retryify("quoteBuy", client.quoteBuy.bind(client), opts),
+    quoteRedeem: retryify("quoteRedeem", client.quoteRedeem.bind(client), opts),
+    listPositions: retryify("listPositions", client.listPositions.bind(client), opts),
   };
 
   // The wrapped quoteBuy satisfies the slippage layer's QuoteProvider contract.
