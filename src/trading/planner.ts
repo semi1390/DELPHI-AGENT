@@ -87,6 +87,10 @@ export interface PlannerConfig {
   maxSlippagePct: number;
   maxConcentration: number;
   tokenDecimals: number;
+  /** If > 0, aim each order into [targetOrderMin, targetOrderMax] TST, shrinking
+   *  below the min only when the book can't absorb it under the slippage cap. */
+  targetOrderMin: number;
+  targetOrderMax: number;
 }
 
 interface Priced {
@@ -133,8 +137,14 @@ export async function planTrades(
     const skip = (reason: string) =>
       skips.push({ marketId: s.marketId, outcomeName: s.outcomeName, source: s.estimatorSource ?? "?", oneShareEdge, reason });
 
-    // Kelly desire (uses the conservative 1-share price), then cap by room.
-    const desiredStake = targetStake({ q, cEff, confidence, kellyFraction: cfg.kellyFraction }, cfg.bankroll);
+    // Sizing. When a target range is set, aim for targetOrderMax (capped by room),
+    // and keep the SLIPPAGE guard so a thin book can pull the fill below the range
+    // rather than blowing past your slippage limit. Edge-shrink is bypassed in range
+    // mode (you want participation at size, not Kelly's tiny bet on a weak edge).
+    const rangeMode = cfg.targetOrderMax > 0;
+    const desiredStake = rangeMode
+      ? cfg.targetOrderMax
+      : targetStake({ q, cEff, confidence, kellyFraction: cfg.kellyFraction }, cfg.bankroll);
     const perMarketRoom = cfg.maxPositionPerMarket - (perMarket.get(s.marketId) ?? 0);
     const totalRoom = cfg.maxTotalExposure - totalExposure;
     const maxStake = Math.min(desiredStake, cfg.maxPositionPerMarket, perMarketRoom, totalRoom);
@@ -147,7 +157,9 @@ export async function planTrades(
 
     const found = await largestFeasibleOrder(quotes, marketAddress, s.outcomeIdx, {
       q, spot, decimals: cfg.tokenDecimals,
-      maxStake, minOrder: cfg.minOrderTst, minEdge: cfg.minEdgeToTrade, maxSlipFrac,
+      maxStake, minOrder: cfg.minOrderTst,
+      minEdge: rangeMode ? -1e9 : cfg.minEdgeToTrade,
+      maxSlipFrac,
     });
     if ("reason" in found) {
       skip(found.reason);
@@ -184,7 +196,10 @@ export async function planTrades(
   }
 
   // Portfolio pass: enforce concentration (no market > cap of total).
-  await enforceConcentration(quotes, orders, skips, cfg);
+  // Skipped in range mode — you want the per-market size to hold in the target band.
+  if (cfg.targetOrderMax <= 0) {
+    await enforceConcentration(quotes, orders, skips, cfg);
+  }
 
   // Recompute running exposure after any concentration changes.
   let running = 0;

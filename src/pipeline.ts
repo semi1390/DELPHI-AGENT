@@ -70,6 +70,8 @@ export async function runPlanCycle(
     maxSlippagePct: config.maxSlippagePct,
     maxConcentration: config.maxConcentration,
     tokenDecimals,
+    targetOrderMin: config.targetOrderMin,
+    targetOrderMax: config.targetOrderMax,
   });
 
   return { runId, at, plan, markets: open, openMarkets: open.length, failedMarkets, tokenDecimals };

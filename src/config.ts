@@ -87,6 +87,9 @@ export interface AppConfig {
   planIntervalMinutes: number;
   /** Worker: optional JSONL file to append intended orders to (for later review). */
   planLogFile?: string;
+  /** If > 0, force this flat order size (TST) per market, bypassing edge/slippage/concentration shrink. */
+  targetOrderMin: number;
+  targetOrderMax: number;
   /** LIVE: hard ceiling (TST) on total capital deployed across all live positions. */
   maxLiveExposure: number;
   /** LIVE: redeem settled winning positions each cycle to free capital. */
@@ -187,6 +190,8 @@ export function loadConfig(): AppConfig {
     baseRateRepostPattern: process.env.BASERATE_REPOST_PATTERN?.trim() || "re-?truth(ed)?|repost(ed)?|reposting|shared a",
     planIntervalMinutes: parseIntEnv(process.env.PLAN_INTERVAL_MINUTES, 20),
     planLogFile: process.env.PLAN_LOG_FILE?.trim() || undefined,
+    targetOrderMin: parseFloatEnv(process.env.TARGET_ORDER_MIN, 0),
+    targetOrderMax: parseFloatEnv(process.env.TARGET_ORDER_MAX, 0),
     maxLiveExposure: parseFloatEnv(process.env.MAX_LIVE_EXPOSURE, 100),
     redeemEnabled: process.env.REDEEM_ENABLED?.trim().toLowerCase() !== "false",
     meanrevMinSkew: parseFloatEnv(process.env.MEANREV_MIN_SKEW, 0.1),
