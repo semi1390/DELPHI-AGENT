@@ -9,9 +9,11 @@
   },
   "scripts": {
     "scan": "tsx scripts/marketScan.ts",
+    "survey": "tsx scripts/surveyMarkets.ts",
     "signal": "tsx scripts/signalScan.ts",
     "quant": "tsx scripts/quantProbe.ts",
     "baserate": "tsx scripts/baserateProbe.ts",
+    "datalookup": "tsx scripts/datalookupProbe.ts",
     "plan": "tsx scripts/tradePlan.ts",
     "wallet": "tsx scripts/checkWallet.ts",
     "worker": "tsx src/worker.ts",

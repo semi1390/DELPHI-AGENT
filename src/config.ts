@@ -101,6 +101,12 @@ export interface AppConfig {
   takeProfitEnabled: boolean;
   /** LIVE: profit threshold (fraction) that triggers a take-profit sell. */
   takeProfitPct: number;
+  /** Data-lookup: SILSO daily sunspot CSV URL. */
+  silsoUrl: string;
+  /** Data-lookup: NSIDC daily Arctic sea-ice extent CSV URL. */
+  nsidcUrl: string;
+  /** Data-lookup: hours to cache a fetched series. */
+  dataLookupCacheHours: number;
 }
 
 function parseNetwork(raw: string | undefined): Network {
@@ -186,6 +192,9 @@ export function loadConfig(): AppConfig {
     meanrevMaxNudge: parseFloatEnv(process.env.MEANREV_MAX_NUDGE, 0.06),
     takeProfitEnabled: process.env.TAKE_PROFIT_ENABLED?.trim().toLowerCase() !== "false",
     takeProfitPct: parseFloatEnv(process.env.TAKE_PROFIT_PCT, 0.4),
+    silsoUrl: process.env.SILSO_URL?.trim() || "https://www.sidc.be/SILSO/DATA/EISN/EISN_current.csv",
+    nsidcUrl: process.env.NSIDC_URL?.trim() || "https://noaadata.apps.nsidc.org/NOAA/G02135/north/daily/data/N_seaice_extent_daily_v3.0.csv",
+    dataLookupCacheHours: parseIntEnv(process.env.DATALOOKUP_CACHE_HOURS, 6),
   };
 }
 

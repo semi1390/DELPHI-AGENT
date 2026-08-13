@@ -22,6 +22,7 @@ import type { ProbabilityEstimator, SourcedEstimate } from "./types.js";
 import { BaselineEstimator } from "./baseline.js";
 import { QuantEstimator } from "./quant.js";
 import { BaseRateEstimator } from "./baserate.js";
+import { DataLookupEstimator } from "./datalookup.js";
 import { MeanReversionEstimator } from "./meanrev.js";
 import { LLMEstimator } from "./llm.js";
 import { ManualOverrideEstimator } from "./manual.js";
@@ -30,6 +31,7 @@ const chain: ProbabilityEstimator[] = [
   new ManualOverrideEstimator(),
   new QuantEstimator(),
   new BaseRateEstimator(),
+  new DataLookupEstimator(),
   new MeanReversionEstimator(),
   new LLMEstimator(),
   new BaselineEstimator(),
