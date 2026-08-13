@@ -37,6 +37,7 @@ export interface LiveExecConfig {
   redeemEnabled: boolean;
   takeProfitEnabled: boolean;
   takeProfitPct: number;
+  sellSlippageTolerance: number;
 }
 
 export interface Fill {
@@ -310,7 +311,11 @@ async function takeProfitSells(
     if (profitPct < config.takeProfitPct) continue; // hold — not enough gain
     if (value < config.minOrderTst) continue; // dust — not worth gas
 
-    const minTokensOut = withDownwardTolerance(tokensOut, config.slippageTolerance);
+    // Sell-side slippage: the quote is optimistic vs the actual fill on thin books,
+    // so a tight floor makes the sell revert (market rejects below-min output). Use
+    // a WIDE tolerance so profit-taking actually executes. sellSlippageTolerance
+    // defaults to a generous value; set 0 to accept any output (pure market exit).
+    const minTokensOut = withDownwardTolerance(tokensOut, config.sellSlippageTolerance);
     const preShares = shares;
     try {
       const { transactionHash } = await client.sellShares({ marketAddress: market, outcomeIdx, sharesIn: shares, minTokensOut });

@@ -16,6 +16,7 @@
     "datalookup": "tsx scripts/datalookupProbe.ts",
     "plan": "tsx scripts/tradePlan.ts",
     "wallet": "tsx scripts/checkWallet.ts",
+    "selldebug": "tsx scripts/sellDebug.ts",
     "worker": "tsx src/worker.ts",
     "dev": "tsx watch src/worker.ts",
     "build": "tsc",

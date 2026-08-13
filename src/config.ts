@@ -101,6 +101,8 @@ export interface AppConfig {
   takeProfitEnabled: boolean;
   /** LIVE: profit threshold (fraction) that triggers a take-profit sell. */
   takeProfitPct: number;
+  /** LIVE: sell-side slippage tolerance for take-profit exits (0..1; higher = looser). */
+  sellSlippageTolerance: number;
   /** Data-lookup: SILSO daily sunspot CSV URL. */
   silsoUrl: string;
   /** Data-lookup: NSIDC daily Arctic sea-ice extent CSV URL. */
@@ -192,6 +194,7 @@ export function loadConfig(): AppConfig {
     meanrevMaxNudge: parseFloatEnv(process.env.MEANREV_MAX_NUDGE, 0.06),
     takeProfitEnabled: process.env.TAKE_PROFIT_ENABLED?.trim().toLowerCase() !== "false",
     takeProfitPct: parseFloatEnv(process.env.TAKE_PROFIT_PCT, 0.4),
+    sellSlippageTolerance: parseFloatEnv(process.env.SELL_SLIPPAGE_TOLERANCE, 0.5),
     silsoUrl: process.env.SILSO_URL?.trim() || "https://www.sidc.be/SILSO/DATA/EISN/EISN_current.csv",
     nsidcUrl: process.env.NSIDC_URL?.trim() || "https://noaadata.apps.nsidc.org/NOAA/G02135/north/daily/data/N_seaice_extent_daily_v3.0.csv",
     dataLookupCacheHours: parseIntEnv(process.env.DATALOOKUP_CACHE_HOURS, 6),

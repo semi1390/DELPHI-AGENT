@@ -46,6 +46,7 @@ async function main(): Promise<void> {
         redeemEnabled: config.redeemEnabled,
         takeProfitEnabled: config.takeProfitEnabled,
         takeProfitPct: config.takeProfitPct,
+        sellSlippageTolerance: config.sellSlippageTolerance,
       },
     });
     logger.warn("live: execution report", {

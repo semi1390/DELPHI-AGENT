@@ -59,6 +59,7 @@ async function runOnce(): Promise<void> {
           redeemEnabled: config.redeemEnabled,
           takeProfitEnabled: config.takeProfitEnabled,
           takeProfitPct: config.takeProfitPct,
+          sellSlippageTolerance: config.sellSlippageTolerance,
         },
       });
       logger.info("live: execution report", {
