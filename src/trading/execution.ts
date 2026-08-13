@@ -38,6 +38,8 @@ export interface LiveExecConfig {
   takeProfitEnabled: boolean;
   takeProfitPct: number;
   sellSlippageTolerance: number;
+  topUpEnabled: boolean;
+  topUpMaxWorse: number;
 }
 
 export interface Fill {
@@ -135,13 +137,47 @@ export async function executeLivePlan(args: {
   }
 
   // 5) Execute orders best-first with all guards.
+  const subgraph = client.getSubgraph();
   for (const o of plan.orders as IntendedOrder[]) {
     const k = key(o.marketId, o.outcomeIdx);
+    const marketAddress = o.marketId as `0x${string}`;
+    const preShares = heldMap.get(k) ?? 0n;
 
-    if ((heldMap.get(k) ?? 0n) > 0n) {
-      report.skips.push({ marketId: o.marketId, outcomeName: o.outcomeName, reason: "already holding this outcome (reconciled)" });
-      continue;
+    // Determine how many shares to BUY this round.
+    // - Not held → buy the full planned order.
+    // - Held + top-up ON → buy only the gap to target, and ONLY if the current
+    //   price isn't worse than our cost basis (don't average up into a runaway).
+    // - Held + top-up OFF → skip (original behavior).
+    let sharesToBuy = o.sharesOut;
+    if (preShares > 0n) {
+      if (!config.topUpEnabled) {
+        report.skips.push({ marketId: o.marketId, outcomeName: o.outcomeName, reason: "already holding this outcome (reconciled)" });
+        continue;
+      }
+      const gap = o.sharesOut - preShares;
+      if (gap <= 0n) {
+        report.skips.push({ marketId: o.marketId, outcomeName: o.outcomeName, reason: "already at/above target size" });
+        continue;
+      }
+      // Price check: skip top-up if current fill price > cost basis × (1 + tolerance).
+      const cb = await costBasis(subgraph, wallet.toLowerCase(), o.marketId, o.outcomeIdx);
+      if (cb && cb.netShares > 0n && cb.netCostTokens > 0n) {
+        const basisPrice = Number(formatUnits(cb.netCostTokens, config.tokenDecimals)) / Number(formatUnits(cb.netShares, 18));
+        try {
+          const q = await reader.quoteBuy({ marketAddress, outcomeIdx: o.outcomeIdx, sharesOut: gap });
+          const gapPrice = Number(formatUnits(q.tokensIn, config.tokenDecimals)) / Number(formatUnits(gap, 18));
+          if (gapPrice > basisPrice * (1 + config.topUpMaxWorse)) {
+            report.skips.push({ marketId: o.marketId, outcomeName: o.outcomeName, reason: `top-up skipped: price ${gapPrice.toFixed(3)} worse than basis ${basisPrice.toFixed(3)}` });
+            continue;
+          }
+        } catch {
+          report.skips.push({ marketId: o.marketId, outcomeName: o.outcomeName, reason: "top-up quote failed" });
+          continue;
+        }
+      }
+      sharesToBuy = gap;
     }
+
     if (report.spent + o.expectedCostTst > remainingBudget) {
       report.skips.push({ marketId: o.marketId, outcomeName: o.outcomeName, reason: "would exceed remaining live budget" });
       continue;
@@ -151,12 +187,9 @@ export async function executeLivePlan(args: {
       continue;
     }
 
-    const marketAddress = o.marketId as `0x${string}`;
-    const preShares = heldMap.get(k) ?? 0n;
-
     try {
       // Fresh re-quote so maxTokensIn reflects the CURRENT price (+ tolerance).
-      const { tokensIn } = await reader.quoteBuy({ marketAddress, outcomeIdx: o.outcomeIdx, sharesOut: o.sharesOut });
+      const { tokensIn } = await reader.quoteBuy({ marketAddress, outcomeIdx: o.outcomeIdx, sharesOut: sharesToBuy });
       const maxTokensIn = withTolerance(tokensIn, config.slippageTolerance);
       const costActual = Number(formatUnits(tokensIn, config.tokenDecimals));
 
@@ -171,13 +204,13 @@ export async function executeLivePlan(args: {
 
       // Buy (write, no retry). Simulates + waits for receipt internally.
       const { transactionHash } = await client.buyShares({
-        marketAddress, outcomeIdx: o.outcomeIdx, sharesOut: o.sharesOut, maxTokensIn,
+        marketAddress, outcomeIdx: o.outcomeIdx, sharesOut: sharesToBuy, maxTokensIn,
       });
 
-      report.fills.push({ marketId: o.marketId, outcomeIdx: o.outcomeIdx, outcomeName: o.outcomeName, source: o.source, costTst: round(costActual), txHash: transactionHash });
+      report.fills.push({ marketId: o.marketId, outcomeIdx: o.outcomeIdx, outcomeName: o.outcomeName, source: o.source, costTst: round(costActual), txHash: transactionHash, note: preShares > 0n ? "top-up" : undefined });
       report.spent += costActual;
-      heldMap.set(k, preShares + o.sharesOut);
-      logger.info("live: FILLED", { market: o.marketId, outcome: o.outcomeName, costTst: round(costActual), txHash: transactionHash });
+      heldMap.set(k, preShares + sharesToBuy);
+      logger.info("live: FILLED", { market: o.marketId, outcome: o.outcomeName, costTst: round(costActual), topUp: preShares > 0n, txHash: transactionHash });
     } catch (err) {
       // IDEMPOTENCY: never resubmit. Re-read the position to learn the truth.
       const message = err instanceof Error ? err.message : String(err);

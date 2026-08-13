@@ -60,6 +60,8 @@ async function runOnce(): Promise<void> {
           takeProfitEnabled: config.takeProfitEnabled,
           takeProfitPct: config.takeProfitPct,
           sellSlippageTolerance: config.sellSlippageTolerance,
+          topUpEnabled: config.topUpEnabled,
+          topUpMaxWorse: config.topUpMaxWorse,
         },
       });
       logger.info("live: execution report", {
